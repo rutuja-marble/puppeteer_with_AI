@@ -66,6 +66,7 @@ export async function extractReviewsOnPage(page, container_ID, review_body) {
 
   return await page.evaluate(
     (container_ID, review_body) => {
+      console.log('`.${review_body?.review_title_class}`',`.${review_body?.review_title_class}`)
       const reviewElements = document.querySelectorAll(`.${container_ID}`);
       console.log("Found review elements:", reviewElements.length);
 
@@ -81,7 +82,7 @@ export async function extractReviewsOnPage(page, container_ID, review_body) {
             ?.innerText.trim() || "No Author",
         title:
           review
-            .querySelector(`.${review_body?.review_title_class}`)
+            .querySelector(`.${review_body?.review_title_class?.split(" ")?.[0]}`)
             ?.innerText.trim() || "No Title",
         description:
           review
@@ -96,22 +97,21 @@ export async function extractReviewsOnPage(page, container_ID, review_body) {
 
 // Function to check if there's a next page
 export async function checkHasNextPage(page, pagination) {
-  console.log("Checking if there is a next page...");
+  console.log("Checking if there is a next page...", pagination);
 
   return await page.evaluate((pagination) => {
-    const nextButtonSelector = pagination?.next_page_class 
-      ? `.${pagination.next_page_class}` 
+    const nextButtonSelector = pagination?.next_page_class
+      ? `.${pagination.next_page_class}`
       : `.${pagination.page_class}`;
 
     const nextButton = document.querySelector(nextButtonSelector);
-    
+    console.log("nextButton", nextButton);
     return (
       nextButton &&
       !nextButton.classList.contains(pagination.page_class + "-inactive")
     );
   }, pagination);
 }
-
 
 async function mainScrapper(page, url) {
   await page.goto(url, {
@@ -216,7 +216,7 @@ async function mainScrapper(page, url) {
       jsonResponse.charAt(jsonResponse.length - 1) === "}"
     ) {
       classList = JSON.parse(jsonResponse);
-      console.log('classList',classList)
+      console.log("classList", classList);
       if (classList) {
         return await scrapeReviews(
           url,
@@ -234,95 +234,142 @@ async function mainScrapper(page, url) {
 
 async function scrapeReviews(url, selectorsList, pagination_info) {
   const browser = await puppeteer.launch({ headless: false });
-  const page = await browser.newPage();
-  const { review_body, pagination } = selectorsList;
-  const container_ID = review_body?.review_item_class?.split(" ");
-  console.log("container_ID", container_ID);
-  console.log("review_body", review_body);
-  console.log("pagination", pagination);
-  console.log("pagination_info", pagination_info);
-  // Increase timeout for slow loading pages
-  page.setDefaultNavigationTimeout(60000); // 60 seconds
-  console.log(`Navigating to the page: ${url}`);
-  await page.goto(url);
 
-  let reviews = [];
-  let hasNextPage = true;
-  let pageNum = 1;
+  try {
+    const page = await browser.newPage();
+    const { review_body, pagination } = selectorsList;
+    const container_ID = review_body?.review_item_class?.split(" ");
+    console.log("container_ID", container_ID);
+    console.log("review_body", review_body);
+    console.log("pagination", pagination);
+    console.log("pagination_info", pagination_info);
+    // Increase timeout for slow loading pages
+    page.setDefaultNavigationTimeout(60000); // 60 seconds
+    console.log(`Navigating to the page: ${url}`);
+    await page.goto(url);
 
-  while (hasNextPage && pageNum < 6) {
-    console.log(`\n--------------------------`);
-    console.log(`Scraping page ${pageNum}`);
+    let reviews = [];
+    let hasNextPage = true;
+    let pageNum = 1;
 
-    // Simulate pressing the 'Esc' key to close any popup dialogs
-    try {
-      console.log(`Attempting to press 'Esc' key to close any popup dialog...`);
-      await page.keyboard.press("Escape");
-      console.log(`'Esc' key pressed successfully.`);
-    } catch (error) {
-      console.log(
-        `Failed to press 'Esc' key or no dialog found: ${error.message}`
-      );
-    }
+    while (hasNextPage) {
+      console.log(`\n--------------------------`);
+      console.log(`Scraping page ${pageNum}`);
 
-    // Wait for the reviews to load
-    try {
-      console.log(`Waiting for the reviews section to load...`);
-      await page.waitForSelector(`.${review_body?.reviews_class}`, {
-        timeout: 60000,
-      }); // 60 seconds
-      console.log(`Reviews section loaded successfully.`);
-    } catch (error) {
-      console.log(`Error waiting for reviews section: ${error.message}`);
-      break; // Exit the loop if reviews section fails to load
-    }
-
-    // Extract reviews from the current page
-    console.log(`Extracting reviews from page ${pageNum}...`);
-    // Extract reviews from the current page using the extractReviewsOnPage function
-    const reviewsOnPage = await extractReviewsOnPage(
-      page,
-      container_ID,
-      review_body
-    );
-
-    reviews = reviews.concat(reviewsOnPage);
-    console.log(`Scraped ${reviewsOnPage.length} reviews from page ${pageNum}`);
-
-    // Check if there's a next page
-    console.log(`Checking if there's a next page...`);
-    // Check if there's a next page using the checkHasNextPage function
-    hasNextPage = await checkHasNextPage(page, pagination);
-
-    if (hasNextPage) {
-      // Click the next page button
+      // Simulate pressing the 'Esc' key to close any popup dialogs
       try {
-        console.log(`Navigating to the next page (page ${pageNum + 1})...`);
-        await page.click(".jdgm-paginate__next-page");
-
-        // Wait for the reviews to load on the next page
         console.log(
-          `Waiting for the next page (page ${pageNum + 1}) to load...`
+          `Attempting to press 'Esc' key to close any popup dialog...`
         );
+        await page.keyboard.press("Escape");
+        console.log(`'Esc' key pressed successfully.`);
+      } catch (error) {
+        console.log(
+          `Failed to press 'Esc' key or no dialog found: ${error.message}`
+        );
+      }
+
+      // Wait for the reviews to load
+      try {
+        console.log(`Waiting for the reviews section to load...`);
         await page.waitForSelector(`.${review_body?.reviews_class}`, {
           timeout: 60000,
-        });
-
-        await delay(3000); // Give extra time for content to load
-        pageNum++;
-        console.log(`Successfully navigated to page ${pageNum}.`);
+        }); // 60 seconds
+        console.log(`Reviews section loaded successfully.`);
       } catch (error) {
-        console.log(`Error navigating to the next page: ${error.message}`);
-        hasNextPage = false; // Stop if there's a navigation issue
+        console.log(`Error waiting for reviews section: ${error.message}`);
+        break; // Exit the loop if reviews section fails to load
       }
-    } else {
-      console.log(`No more pages or last page reached.`);
-    }
-  }
 
-  console.log(`Closing the browser...`);
-  await browser.close();
-  return reviews;
+      if (pagination?.next_page_class) {
+        // Extract reviews from the current page
+        console.log(`Extracting reviews from page ${pageNum}...`);
+        // Extract reviews from the current page using the extractReviewsOnPage function
+        const reviewsOnPage = await extractReviewsOnPage(
+          page,
+          container_ID,
+          review_body
+        );
+
+        reviews = reviews.concat(reviewsOnPage);
+        console.log(
+          `Scraped ${reviewsOnPage.length} reviews from page ${pageNum}`
+        );
+      }
+
+      // Check if there's a next page
+      console.log(`Checking if there's a next page...`);
+      // Check if there's a next page using the checkHasNextPage function
+      hasNextPage = await checkHasNextPage(page, pagination);
+      console.log("hasNextPage", hasNextPage);
+      if (hasNextPage) {
+        // Click the next page button
+        try {
+          console.log(`Navigating to the next page (page ${pageNum + 1})...`);
+          const pageClass = pagination?.next_page_class
+            ? `.${pagination?.next_page_class}`
+            : `.${pagination?.page_class}`;
+          await page.click(pageClass);
+
+          // Wait for the reviews to load on the next page
+          console.log(
+            `Waiting for the next page (page ${pageNum + 1}) to load...`
+          );
+          await page.waitForSelector(`.${review_body?.reviews_class}`, {
+            timeout: 60000,
+          });
+
+          await delay(3000); // Give extra time for content to load
+          pageNum++;
+          console.log(`Successfully navigated to page ${pageNum}.`);
+        } catch (error) {
+          console.log(`Error navigating to the next page: ${error.message}`);
+          hasNextPage = false; // Stop if there's a navigation issue
+        }
+      } else {
+        if (!pagination?.next_page_class) {
+          // Extract reviews from the current page
+          console.log(`Extracting reviews from page ${pageNum}...`);
+          // Extract reviews from the current page using the extractReviewsOnPage function
+          const reviewsOnPage = await extractReviewsOnPage(
+            page,
+            container_ID,
+            review_body
+          );
+  
+          reviews = reviews.concat(reviewsOnPage);
+          console.log(
+            `Scraped ${reviewsOnPage.length} reviews from page ${pageNum}`
+          );
+        }
+  
+        console.log(`No more pages or last page reached.`);
+      }
+    }
+
+    // if (!pagination?.next_page_class) {
+    //   // Extract reviews from the current page
+    //   console.log(`Extracting reviews from page ${pageNum}...`);
+    //   // Extract reviews from the current page using the extractReviewsOnPage function
+    //   const reviewsOnPage = await extractReviewsOnPage(
+    //     page,
+    //     container_ID,
+    //     review_body
+    //   );
+
+    //   reviews = reviews.concat(reviewsOnPage);
+    //   console.log(
+    //     `Scraped ${reviewsOnPage.length} reviews from page ${pageNum}`
+    //   );
+    // }
+    console.log(`Closing the browser...`);
+
+    return reviews;
+  } catch (error) {
+    console.log("Error Occured :", error);
+  } finally {
+    await browser.close();
+  }
 }
 
 async function main() {
@@ -336,10 +383,16 @@ async function main() {
     defaultViewport: null,
   });
   const page = await browser.newPage();
-  const url = "https://www.letifly.com/products/rechargeable-globe-lamp-cordless-led-table-lamp-with-rechargeable-batteries";
+  const url =
+    "https://www.letifly.com/products/rechargeable-globe-lamp-cordless-led-table-lamp-with-rechargeable-batteries";
 
   try {
     const reviews = await mainScrapper(page, url);
+    // const reviews = await scrapeReviews(
+    //   url,
+    //   classList?.review_section,
+    //   classList?.pagination_info
+    // );
     await browser.close();
     console.log(`Total reviews scraped: ${reviews.length}`);
     // Convert to CSV and save to file
