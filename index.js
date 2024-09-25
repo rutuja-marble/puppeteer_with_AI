@@ -275,7 +275,7 @@ async function scrapeReviews(url, selectorsList,pagination_info) {
     // Wait for the reviews to load
     try {
       console.log(`Waiting for the reviews section to load...`);
-      await page.waitForSelector('.jdgm-rev-widg__reviews', { timeout: 60000 }); // 60 seconds
+      await page.waitForSelector(`.${review_body?.reviews_class}`, { timeout: 60000 }); // 60 seconds
       console.log(`Reviews section loaded successfully.`);
     } catch (error) {
       console.log(`Error waiting for reviews section: ${error.message}`);
@@ -304,7 +304,7 @@ async function scrapeReviews(url, selectorsList,pagination_info) {
         
         // Wait for the reviews to load on the next page
         console.log(`Waiting for the next page (page ${pageNum + 1}) to load...`);
-        await page.waitForSelector('.jdgm-rev-widg__reviews', { timeout: 60000 });
+        await page.waitForSelector(`.${review_body?.reviews_class}`, { timeout: 60000 });
         
         await delay(3000); // Give extra time for content to load
         pageNum++;
