@@ -64,6 +64,34 @@ export async function extractReviewSection(page) {
 }
 
 
+// Function to extract reviews from the current page
+export async function extractReviewsOnPage(page, container_ID, review_body) {
+  console.log('Extracting reviews for container:', container_ID[0]);
+
+  return await page.evaluate((container_ID, review_body) => {
+    const reviewElements = document.querySelectorAll(`.${container_ID}`);
+    console.log('Found review elements:', reviewElements.length);
+
+    // Map through the review elements and extract the details
+    return Array.from(reviewElements).map(review => ({
+      rating: review.querySelector(`.${review_body?.review_rating_class}`)?.getAttribute('data-score') || 'N/A',
+      author: review.querySelector(`.${review_body?.review_author_name_class}`)?.innerText.trim() || 'No Author',
+      title: review.querySelector(`.${review_body?.review_title_class}`)?.innerText.trim() || 'No Title',
+      description: review.querySelector(`.${review_body?.review_body_text_class}`)?.innerText.trim() || 'No Description',
+    }));
+  }, container_ID, review_body);
+}
+
+// Function to check if there's a next page
+export async function checkHasNextPage(page, pagination) {
+  console.log('Checking if there is a next page...');
+
+  return await page.evaluate((pagination) => {
+    const nextButton = document.querySelector(`.${pagination?.next_page_class}`);
+    return nextButton && !nextButton.classList.contains(pagination?.page_class + '-inactive');
+  }, pagination);
+}
+
 
 async function scrapper() {
   // await puppeteer.connect({})
@@ -256,30 +284,16 @@ async function scrapeReviews(url, selectorsList,pagination_info) {
 
     // Extract reviews from the current page
     console.log(`Extracting reviews from page ${pageNum}...`);
-   // Pass container_ID as an argument to page.evaluate
-   const reviewsOnPage = await page.evaluate((container_ID, review_body) => {
-    console.log('container_ID',container_ID[0], typeof(container_ID))
-    const reviewElements = document.querySelectorAll(`.${container_ID}`);
-    console.log('reviewElements',reviewElements)
-    console.log(`.${review_body?.review_rating_class}`,`.${review_body?.review_author_name_class}`)
-    return Array.from(reviewElements).map(review => ({
-      rating: review.querySelector(`.${review_body?.review_rating_class}`)?.getAttribute('data-score') || 'N/A',
-      author: review.querySelector(`.${review_body?.review_author_name_class}`)?.innerText.trim() || 'No Author',
-      title: review.querySelector(`.${review_body?.review_title_class}`)?.innerText.trim() || 'No Title',
-      description: review.querySelector(`.${review_body?.review_body_text_class}`)?.innerText.trim() || 'No Description'
-    }));
-
-  }, container_ID, review_body);  // Pass container_ID and selectorsList here
+   // Extract reviews from the current page using the extractReviewsOnPage function
+   const reviewsOnPage = await extractReviewsOnPage(page, container_ID, review_body);
   
     reviews = reviews.concat(reviewsOnPage);
     console.log(`Scraped ${reviewsOnPage.length} reviews from page ${pageNum}`);
 
     // Check if there's a next page
     console.log(`Checking if there's a next page...`);
-     hasNextPage = await page.evaluate((pagination) => {
-      const nextButton = document.querySelector(`.${pagination?.next_page_class}`);
-      return nextButton && !nextButton.classList.contains(pagination?.page_class + '-inactive');
-    }, pagination);
+     // Check if there's a next page using the checkHasNextPage function
+     hasNextPage = await checkHasNextPage(page, pagination);
     
 
     if (hasNextPage) {
