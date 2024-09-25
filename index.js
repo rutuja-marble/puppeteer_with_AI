@@ -99,15 +99,19 @@ export async function checkHasNextPage(page, pagination) {
   console.log("Checking if there is a next page...");
 
   return await page.evaluate((pagination) => {
-    const nextButton = document.querySelector(
-      `.${pagination?.next_page_class}`
-    );
+    const nextButtonSelector = pagination?.next_page_class 
+      ? `.${pagination.next_page_class}` 
+      : `.${pagination.page_class}`;
+
+    const nextButton = document.querySelector(nextButtonSelector);
+    
     return (
       nextButton &&
-      !nextButton.classList.contains(pagination?.page_class + "-inactive")
+      !nextButton.classList.contains(pagination.page_class + "-inactive")
     );
   }, pagination);
 }
+
 
 async function mainScrapper(page, url) {
   await page.goto(url, {
@@ -212,6 +216,7 @@ async function mainScrapper(page, url) {
       jsonResponse.charAt(jsonResponse.length - 1) === "}"
     ) {
       classList = JSON.parse(jsonResponse);
+      console.log('classList',classList)
       if (classList) {
         return await scrapeReviews(
           url,
@@ -331,7 +336,7 @@ async function main() {
     defaultViewport: null,
   });
   const page = await browser.newPage();
-  const url = "https://ridgemontoutfitters.com/products/monty-lo-black-gum-1";
+  const url = "https://www.letifly.com/products/rechargeable-globe-lamp-cordless-led-table-lamp-with-rechargeable-batteries";
 
   try {
     const reviews = await mainScrapper(page, url);
