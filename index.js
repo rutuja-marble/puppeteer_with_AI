@@ -37,7 +37,7 @@ export async function extractReviewSection(page) {
 
   // Combine the patterns to match both possible review section variations
   let reviewSection = html.match(
-    /<div class="(jdgm-widget (jdgm-review-widget|jdgm-all-reviews-widget) jdgm--done-setup-widget|yotpo-bold-layout yotpo-main-reviews-widget)">.*?<\/div>/s
+    /<div class="(jdgm-widget (jdgm-review-widget|jdgm-all-reviews-widget) jdgm--done-setup-widget|yotpo-bold-layout yotpo-main-reviews-widget|okeReviews-reviewsWidget okeReviews-reviewsWidget--minimal js-okeReviews-reviewsWidget is-okeReviews-reviewsWidget-medium)">.*?<\/div>/s
   );
 
   // Log the extracted review section or a message if not found
@@ -102,7 +102,7 @@ export async function checkHasNextPage(page, pagination) {
   return await page.evaluate((pagination) => {
     const nextButtonSelector = pagination?.next_page_class
       ? `.${pagination.next_page_class}`
-      : `.${pagination.page_class}`;
+      : `.${pagination.page_class.split(" ")?.[0]}`;
 
     const nextButton = document.querySelector(nextButtonSelector);
     console.log("nextButton", nextButton);
@@ -308,7 +308,7 @@ async function scrapeReviews(url, selectorsList, pagination_info) {
           console.log(`Navigating to the next page (page ${pageNum + 1})...`);
           const pageClass = pagination?.next_page_class
             ? `.${pagination?.next_page_class}`
-            : `.${pagination?.page_class}`;
+            : `.${pagination?.page_class?.split(" ")?.[0]}`;
           await page.click(pageClass);
 
           // Wait for the reviews to load on the next page
@@ -323,8 +323,24 @@ async function scrapeReviews(url, selectorsList, pagination_info) {
           pageNum++;
           console.log(`Successfully navigated to page ${pageNum}.`);
         } catch (error) {
+          if (!pagination?.next_page_class) {
+            // Extract reviews from the current page
+            console.log(`Extracting reviews from page ${pageNum}...`);
+            // Extract reviews from the current page using the extractReviewsOnPage function
+            const reviewsOnPage = await extractReviewsOnPage(
+              page,
+              container_ID,
+              review_body
+            );
+    
+            reviews = reviews.concat(reviewsOnPage);
+            console.log(
+              `Scraped ${reviewsOnPage.length} reviews from page ${pageNum}`
+            );
+          }
           console.log(`Error navigating to the next page: ${error.message}`);
           hasNextPage = false; // Stop if there's a navigation issue
+          
         }
       } else {
         if (!pagination?.next_page_class) {
@@ -368,9 +384,10 @@ async function scrapeReviews(url, selectorsList, pagination_info) {
   } catch (error) {
     console.log("Error Occured :", error);
   } finally {
-    await browser.close();
+    // await browser.close();
   }
 }
+
 
 async function main() {
   const browser = await puppeteer.launch({
@@ -384,7 +401,7 @@ async function main() {
   });
   const page = await browser.newPage();
   const url =
-    "https://www.letifly.com/products/rechargeable-globe-lamp-cordless-led-table-lamp-with-rechargeable-batteries";
+    "https://www.alpsandmeters.com/collections/popular-right-now/products/24-ski-club-sweater";
 
   try {
     const reviews = await mainScrapper(page, url);
