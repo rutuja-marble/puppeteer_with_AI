@@ -195,7 +195,7 @@ async function scrapeReviews(url, selectorsList,pagination_info) {
   let hasNextPage = true;
   let pageNum = 1;
 
-  while (hasNextPage && pageNum<6) {
+  while (hasNextPage) {
     console.log(`\n--------------------------`);
     console.log(`Scraping page ${pageNum}`);
 
