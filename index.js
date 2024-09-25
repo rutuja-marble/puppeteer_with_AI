@@ -9,12 +9,61 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+
+function extractDomainWithoutCom(url) {
+  try {
+    const parsedUrl = new URL(url);
+    const domain = parsedUrl.hostname;
+    
+    // Remove the top-level domain (TLD), assuming it's the part after the last dot
+    return domain.split('.').slice(0, -1).join('.');
+  } catch (error) {
+    console.error("Invalid URL:", error.message);
+    return null;
+  }
+}
+
+
 // Helper function to delay execution
 function delay(time) {
   return new Promise(function(resolve) { 
     setTimeout(resolve, time);
   });
 }
+
+
+// reviewFilter.js
+// Function to extract and clean the review section
+export async function extractReviewSection(page) {
+  // Get the full page content (innerHTML of the body)
+  let html = await page.evaluate(() => document.body.innerHTML);
+
+  // Combine the patterns to match both possible review section variations
+  let reviewSection = html.match(
+    /<div class="(jdgm-widget (jdgm-review-widget|jdgm-all-reviews-widget) jdgm--done-setup-widget|yotpo-bold-layout yotpo-main-reviews-widget)">.*?<\/div>/s
+  );
+
+  // Log the extracted review section or a message if not found
+  if (!reviewSection) {
+    console.log("Review section not found with the specified patterns.");
+  } else {
+    console.log("Review Section:", reviewSection[0]);
+  }
+
+  // Use the matched review section or fallback to the full HTML if neither pattern matches
+  html = reviewSection ? reviewSection[0] : html;
+
+  // Remove unwanted tags (SVG, script, style, link) from the HTML
+  html = html.replace(/<svg[^>]*>[\s\S]*?<\/svg>/gi, ""); // Remove SVG tags and their content
+  html = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ""); // Remove script tags and their content
+  html = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ""); // Remove style tags and their content
+  html = html.replace(/<link[^>]*>[\s\S]*?<\/link>/gi, ""); // Remove link tags
+
+  // Return the cleaned HTML
+  return html;
+}
+
+
 
 async function scrapper() {
   // await puppeteer.connect({})
@@ -28,33 +77,16 @@ async function scrapper() {
     defaultViewport: null,
   });
   const page = await browser.newPage();
-  const url = "https://2717recovery.com/products/recovery-cream";
+  const url = "https://ridgemontoutfitters.com/products/monty-lo-black-gum-1";
   await page.goto(url, {
     waitUntil: "networkidle0",
   });
   await new Promise((resolve) => setTimeout(resolve, 1000));
 
-  // const html= await page.content();
-  // console.log('html',html)
-  let html = await page.evaluate(() => document.body.innerHTML);
-
-  // Combine the patterns to match both possible review section variations
-  let reviewSection = html.match(
-    /<div class="(jdgm-widget (jdgm-review-widget|jdgm-all-reviews-widget) jdgm--done-setup-widget|yotpo-bold-layout yotpo-main-reviews-widget)">.*?<\/div>/s
-  );
-  // Log the extracted review section or a message if not found
-  if (!reviewSection) {
-    console.log("Review section not found with the specified patterns.");
-  } else {
-    console.log("Review Section:", reviewSection[0]);
-  }
-
-  // Use the matched review section or fallback to the full HTML if neither pattern matches
-  html = reviewSection ? reviewSection[0] : html; // Use the limited HTML or fallback to full HTML
-  html = html.replace(/<svg[^>]*>[\s\S]*?<\/svg>/gi, ""); // Removes all SVG tags and their content
-  html = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ""); // Removes all script tags and their content
-  html = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ""); // Removes all style tags and their content
-  html = html.replace(/<link[^>]*>[\s\S]*?<\/link>/gi, ""); // Removes all script tags and their content
+  // Call the review section extraction function
+  const html = await extractReviewSection(page);
+  
+  console.log('Cleaned Review Section:', html);
 
   let classList = {};
   await browser.close();
@@ -65,74 +97,74 @@ async function scrapper() {
         role: "user",
         content: `Here is the HTML of some website: ${html}.
 
-Review the HTML code and list out the selectors that are accompanied by the review section by properly segregating the selectors based on their use cases, i.e., main_review_section_container, review_header, review_stars, review_details, pagination, etc. 
+                  Review the HTML code and list out the selectors that are accompanied by the review section by properly segregating the selectors based on their use cases, i.e., main_review_section_container, review_header, review_stars, review_details, pagination, etc. 
 
-If a specific selector is not found, return 'null' for that selector key while keeping the overall structure intact. 
+                  If a specific selector is not found, return 'null' for that selector key while keeping the overall structure intact. 
 
-If a section is completely missing, set it as 'null'.
+                  If a section is completely missing, set it as 'null'.
 
-Also, find out whether the review section consists of pagination or not. Set '"pagination_info": { "exists": false }' if pagination is not found.
+                  Also, find out whether the review section consists of pagination or not. Set '"pagination_info": { "exists": false }' if pagination is not found.
 
-Generate the response in the following format:
+                  Generate the response in the following format:
 
-{
-  review_section: {
-    main_review_section_container: {
-      id: null, // Or id if found
-      class: null, // Or array of classes if found
-      'data-attributes': null // Or object with data attributes if found
-    } || null,
-    review_header: {
-      class: null,
-      title_class: null,
-      subtitle_class: null,
-      summary_inner_class: null,
-      stars_class: null,
-      average_class: null,
-      text_class: null,
-      link_class: null
-    } || null,
-    review_histogram: {
-      histogram_class: null,
-      histogram_row_class: null,
-      star_class: null,
-      bar_class: null,
-      bar_content_class: null,
-      frequency_class: null,
-      clear_filter_class: null
-    } || null,
-    review_actions: {
-      actions_wrapper_class: null,
-      write_review_button_class: null
-    } || null,
-    review_body: {
-      class: null,
-      reviews_class: null,
-      review_item_class: null,
-      review_content_class: null,
-      review_title_class: null,
-      review_body_text_class: null,
-      review_timestamp_class: null,
-      review_author_class: null,
-      review_author_name_class: null,
-      review_buyer_badge_class: null,
-      review_social_class: null,
-      review_votes_class: null,
-      review_rating_class: null
-    } || null,
-    pagination: {
-      pagination_class: null,
-      page_class: null,
-      current_page_class: null,
-      next_page_class: null,
-      last_page_class: null,
-      spinner_wrapper_class: null,
-      spinner_class: null
-    } || null
-  },
-  pagination_info: { exists: false } // Or true if found
-}
-`,
+                  {
+                    review_section: {
+                      main_review_section_container: {
+                        id: null, // Or id if found
+                        class: null, // Or array of classes if found
+                        'data-attributes': null // Or object with data attributes if found
+                      } || null,
+                      review_header: {
+                        class: null,
+                        title_class: null,
+                        subtitle_class: null,
+                        summary_inner_class: null,
+                        stars_class: null,
+                        average_class: null,
+                        text_class: null,
+                        link_class: null
+                      } || null,
+                      review_histogram: {
+                        histogram_class: null,
+                        histogram_row_class: null,
+                        star_class: null,
+                        bar_class: null,
+                        bar_content_class: null,
+                        frequency_class: null,
+                        clear_filter_class: null
+                      } || null,
+                      review_actions: {
+                        actions_wrapper_class: null,
+                        write_review_button_class: null
+                      } || null,
+                      review_body: {
+                        class: null,
+                        reviews_class: null,
+                        review_item_class: null,
+                        review_content_class: null,
+                        review_title_class: null,
+                        review_body_text_class: null,
+                        review_timestamp_class: null,
+                        review_author_class: null,
+                        review_author_name_class: null,
+                        review_buyer_badge_class: null,
+                        review_social_class: null,
+                        review_votes_class: null,
+                        review_rating_class: null
+                      } || null,
+                      pagination: {
+                        pagination_class: null,
+                        page_class: null,
+                        current_page_class: null,
+                        next_page_class: null,
+                        last_page_class: null,
+                        spinner_wrapper_class: null,
+                        spinner_class: null
+                      } || null
+                    },
+                    pagination_info: { exists: false } // Or true if found
+                  }
+                  `,
       },
     ],
   });
@@ -162,7 +194,8 @@ Generate the response in the following format:
   const parser = new Parser({ fields });
   const csv = parser.parse(reviews);
 
-  fs.writeFileSync('judgeMeReviews.csv', csv);
+  const filename = extractDomainWithoutCom(url)
+  fs.writeFileSync(`${filename}.csv`, csv);
   console.log(`Scraped reviews saved to reviews.csv`);
       }
     } else {
@@ -184,10 +217,13 @@ async function scrapeReviews(url, selectorsList,pagination_info) {
   const browser = await puppeteer.launch({ headless: false });
   const page = await browser.newPage();
   const{review_body,pagination} = selectorsList;
-  const container_ID = selectorsList?.review_body?.review_item_class?.split(" ")
+  const container_ID = review_body?.review_item_class?.split(" ")
   console.log('container_ID',container_ID)
+  console.log('review_body',review_body)
+  console.log('pagination',pagination)
+  console.log('pagination_info',pagination_info)
   // Increase timeout for slow loading pages
-  await page.setDefaultNavigationTimeout(60000); // 60 seconds
+  page.setDefaultNavigationTimeout(60000); // 60 seconds
   console.log(`Navigating to the page: ${url}`);
   await page.goto(url);
 
@@ -195,7 +231,7 @@ async function scrapeReviews(url, selectorsList,pagination_info) {
   let hasNextPage = true;
   let pageNum = 1;
 
-  while (hasNextPage) {
+  while (hasNextPage && pageNum<6) {
     console.log(`\n--------------------------`);
     console.log(`Scraping page ${pageNum}`);
 
