@@ -2,35 +2,32 @@ import OpenAI from "openai";
 import "dotenv/config";
 import puppeteer from "puppeteer";
 
-import fs from 'fs';
-import { Parser } from 'json2csv';
+import fs from "fs";
+import { Parser } from "json2csv";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-
 function extractDomainWithoutCom(url) {
   try {
     const parsedUrl = new URL(url);
     const domain = parsedUrl.hostname;
-    
+
     // Remove the top-level domain (TLD), assuming it's the part after the last dot
-    return domain.split('.').slice(0, -1).join('.');
+    return domain.split(".").slice(0, -1).join(".");
   } catch (error) {
     console.error("Invalid URL:", error.message);
     return null;
   }
 }
 
-
 // Helper function to delay execution
 function delay(time) {
-  return new Promise(function(resolve) { 
+  return new Promise(function (resolve) {
     setTimeout(resolve, time);
   });
 }
-
 
 // reviewFilter.js
 // Function to extract and clean the review section
@@ -63,49 +60,56 @@ export async function extractReviewSection(page) {
   return html;
 }
 
-
 // Function to extract reviews from the current page
 export async function extractReviewsOnPage(page, container_ID, review_body) {
-  console.log('Extracting reviews for container:', container_ID[0]);
+  console.log("Extracting reviews for container:", container_ID[0]);
 
-  return await page.evaluate((container_ID, review_body) => {
-    const reviewElements = document.querySelectorAll(`.${container_ID}`);
-    console.log('Found review elements:', reviewElements.length);
+  return await page.evaluate(
+    (container_ID, review_body) => {
+      const reviewElements = document.querySelectorAll(`.${container_ID}`);
+      console.log("Found review elements:", reviewElements.length);
 
-    // Map through the review elements and extract the details
-    return Array.from(reviewElements).map(review => ({
-      rating: review.querySelector(`.${review_body?.review_rating_class}`)?.getAttribute('data-score') || 'N/A',
-      author: review.querySelector(`.${review_body?.review_author_name_class}`)?.innerText.trim() || 'No Author',
-      title: review.querySelector(`.${review_body?.review_title_class}`)?.innerText.trim() || 'No Title',
-      description: review.querySelector(`.${review_body?.review_body_text_class}`)?.innerText.trim() || 'No Description',
-    }));
-  }, container_ID, review_body);
+      // Map through the review elements and extract the details
+      return Array.from(reviewElements).map((review) => ({
+        rating:
+          review
+            .querySelector(`.${review_body?.review_rating_class}`)
+            ?.getAttribute("data-score") || "N/A",
+        author:
+          review
+            .querySelector(`.${review_body?.review_author_name_class}`)
+            ?.innerText.trim() || "No Author",
+        title:
+          review
+            .querySelector(`.${review_body?.review_title_class}`)
+            ?.innerText.trim() || "No Title",
+        description:
+          review
+            .querySelector(`.${review_body?.review_body_text_class}`)
+            ?.innerText.trim() || "No Description",
+      }));
+    },
+    container_ID,
+    review_body
+  );
 }
 
 // Function to check if there's a next page
 export async function checkHasNextPage(page, pagination) {
-  console.log('Checking if there is a next page...');
+  console.log("Checking if there is a next page...");
 
   return await page.evaluate((pagination) => {
-    const nextButton = document.querySelector(`.${pagination?.next_page_class}`);
-    return nextButton && !nextButton.classList.contains(pagination?.page_class + '-inactive');
+    const nextButton = document.querySelector(
+      `.${pagination?.next_page_class}`
+    );
+    return (
+      nextButton &&
+      !nextButton.classList.contains(pagination?.page_class + "-inactive")
+    );
   }, pagination);
 }
 
-
-async function scrapper() {
-  // await puppeteer.connect({})
-  const browser = await puppeteer.launch({
-    headless: false,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-features=site-per-process",
-    ],
-    defaultViewport: null,
-  });
-  const page = await browser.newPage();
-  const url = "https://ridgemontoutfitters.com/products/monty-lo-black-gum-1";
+async function mainScrapper(page, url) {
   await page.goto(url, {
     waitUntil: "networkidle0",
   });
@@ -113,11 +117,8 @@ async function scrapper() {
 
   // Call the review section extraction function
   const html = await extractReviewSection(page);
-  
-  console.log('Cleaned Review Section:', html);
 
   let classList = {};
-  await browser.close();
   const response = await openai.chat.completions.create({
     model: "gpt-4o",
     messages: [
@@ -204,7 +205,6 @@ async function scrapper() {
     .replace(/^[^{]*{/s, "{") // Removes text before the first {
     .replace(/}[^}]*$/s, "}"); // Removes text after the last }
 
-  // let classList = {};
   try {
     // Check if the cleaned response is valid JSON
     if (
@@ -212,19 +212,12 @@ async function scrapper() {
       jsonResponse.charAt(jsonResponse.length - 1) === "}"
     ) {
       classList = JSON.parse(jsonResponse);
-      if(classList){
-       const reviews = await  scrapeReviews(url, classList?.review_section, classList?.pagination_info)
-       
-       console.log(`Total reviews scraped: ${reviews.length}`);
-
-  // Convert to CSV and save to file
-  const fields = ['rating', 'author', 'title', 'description'];
-  const parser = new Parser({ fields });
-  const csv = parser.parse(reviews);
-
-  const filename = extractDomainWithoutCom(url)
-  fs.writeFileSync(`${filename}.csv`, csv);
-  console.log(`Scraped reviews saved to reviews.csv`);
+      if (classList) {
+        return await scrapeReviews(
+          url,
+          classList?.review_section,
+          classList?.pagination_info
+        );
       }
     } else {
       console.error("The cleaned response is not a valid JSON object.");
@@ -232,24 +225,17 @@ async function scrapper() {
   } catch (error) {
     console.error("Error parsing JSON response:", error);
   }
-
 }
 
-scrapper();
-
-
-
-
-async function scrapeReviews(url, selectorsList,pagination_info) {
-
+async function scrapeReviews(url, selectorsList, pagination_info) {
   const browser = await puppeteer.launch({ headless: false });
   const page = await browser.newPage();
-  const{review_body,pagination} = selectorsList;
-  const container_ID = review_body?.review_item_class?.split(" ")
-  console.log('container_ID',container_ID)
-  console.log('review_body',review_body)
-  console.log('pagination',pagination)
-  console.log('pagination_info',pagination_info)
+  const { review_body, pagination } = selectorsList;
+  const container_ID = review_body?.review_item_class?.split(" ");
+  console.log("container_ID", container_ID);
+  console.log("review_body", review_body);
+  console.log("pagination", pagination);
+  console.log("pagination_info", pagination_info);
   // Increase timeout for slow loading pages
   page.setDefaultNavigationTimeout(60000); // 60 seconds
   console.log(`Navigating to the page: ${url}`);
@@ -259,23 +245,27 @@ async function scrapeReviews(url, selectorsList,pagination_info) {
   let hasNextPage = true;
   let pageNum = 1;
 
-  while (hasNextPage && pageNum<6) {
+  while (hasNextPage && pageNum < 6) {
     console.log(`\n--------------------------`);
     console.log(`Scraping page ${pageNum}`);
 
     // Simulate pressing the 'Esc' key to close any popup dialogs
     try {
       console.log(`Attempting to press 'Esc' key to close any popup dialog...`);
-      await page.keyboard.press('Escape');
+      await page.keyboard.press("Escape");
       console.log(`'Esc' key pressed successfully.`);
     } catch (error) {
-      console.log(`Failed to press 'Esc' key or no dialog found: ${error.message}`);
+      console.log(
+        `Failed to press 'Esc' key or no dialog found: ${error.message}`
+      );
     }
 
     // Wait for the reviews to load
     try {
       console.log(`Waiting for the reviews section to load...`);
-      await page.waitForSelector(`.${review_body?.reviews_class}`, { timeout: 60000 }); // 60 seconds
+      await page.waitForSelector(`.${review_body?.reviews_class}`, {
+        timeout: 60000,
+      }); // 60 seconds
       console.log(`Reviews section loaded successfully.`);
     } catch (error) {
       console.log(`Error waiting for reviews section: ${error.message}`);
@@ -284,28 +274,35 @@ async function scrapeReviews(url, selectorsList,pagination_info) {
 
     // Extract reviews from the current page
     console.log(`Extracting reviews from page ${pageNum}...`);
-   // Extract reviews from the current page using the extractReviewsOnPage function
-   const reviewsOnPage = await extractReviewsOnPage(page, container_ID, review_body);
-  
+    // Extract reviews from the current page using the extractReviewsOnPage function
+    const reviewsOnPage = await extractReviewsOnPage(
+      page,
+      container_ID,
+      review_body
+    );
+
     reviews = reviews.concat(reviewsOnPage);
     console.log(`Scraped ${reviewsOnPage.length} reviews from page ${pageNum}`);
 
     // Check if there's a next page
     console.log(`Checking if there's a next page...`);
-     // Check if there's a next page using the checkHasNextPage function
-     hasNextPage = await checkHasNextPage(page, pagination);
-    
+    // Check if there's a next page using the checkHasNextPage function
+    hasNextPage = await checkHasNextPage(page, pagination);
 
     if (hasNextPage) {
       // Click the next page button
       try {
         console.log(`Navigating to the next page (page ${pageNum + 1})...`);
-        await page.click('.jdgm-paginate__next-page');
-        
+        await page.click(".jdgm-paginate__next-page");
+
         // Wait for the reviews to load on the next page
-        console.log(`Waiting for the next page (page ${pageNum + 1}) to load...`);
-        await page.waitForSelector(`.${review_body?.reviews_class}`, { timeout: 60000 });
-        
+        console.log(
+          `Waiting for the next page (page ${pageNum + 1}) to load...`
+        );
+        await page.waitForSelector(`.${review_body?.reviews_class}`, {
+          timeout: 60000,
+        });
+
         await delay(3000); // Give extra time for content to load
         pageNum++;
         console.log(`Successfully navigated to page ${pageNum}.`);
@@ -323,4 +320,37 @@ async function scrapeReviews(url, selectorsList,pagination_info) {
   return reviews;
 }
 
+async function main() {
+  const browser = await puppeteer.launch({
+    headless: false,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-features=site-per-process",
+    ],
+    defaultViewport: null,
+  });
+  const page = await browser.newPage();
+  const url = "https://ridgemontoutfitters.com/products/monty-lo-black-gum-1";
 
+  try {
+    const reviews = await mainScrapper(page, url);
+    await browser.close();
+    console.log(`Total reviews scraped: ${reviews.length}`);
+    // Convert to CSV and save to file
+    const fields = ["rating", "author", "title", "description"];
+    const parser = new Parser({ fields });
+    const csv = parser.parse(reviews);
+
+    const filename = extractDomainWithoutCom(url);
+    fs.writeFileSync(`${filename}.csv`, csv);
+    console.log(`Scraped reviews saved to ${filename}.csv`);
+  } catch (error) {
+    console.error("Error during scraping:", error);
+  } finally {
+    await browser.close();
+    console.log("Browser closed.");
+  }
+}
+
+main().catch(console.error);
