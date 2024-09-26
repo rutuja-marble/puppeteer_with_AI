@@ -56,7 +56,13 @@ export async function extractReviewSection(page) {
   html = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ""); // Remove style tags and their content
   html = html.replace(/<link[^>]*>[\s\S]*?<\/link>/gi, ""); // Remove link tags
 
-  // Return the cleaned HTML
+
+// Remove extra whitespace (spaces, newlines, tabs) from the HTML
+html = html.replace(/\s+/g, " ").trim();
+
+console.log('Cleaned HTML:', html);  // Return the cleaned HTML
+
+
   return html;
 }
 
@@ -124,7 +130,7 @@ async function mainScrapper(page, url) {
 
   let classList = {};
   const response = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: "gpt-4",
     messages: [
       {
         role: "user",
@@ -146,29 +152,6 @@ async function mainScrapper(page, url) {
                         id: null, // Or id if found
                         class: null, // Or array of classes if found
                         'data-attributes': null // Or object with data attributes if found
-                      } || null,
-                      review_header: {
-                        class: null,
-                        title_class: null,
-                        subtitle_class: null,
-                        summary_inner_class: null,
-                        stars_class: null,
-                        average_class: null,
-                        text_class: null,
-                        link_class: null
-                      } || null,
-                      review_histogram: {
-                        histogram_class: null,
-                        histogram_row_class: null,
-                        star_class: null,
-                        bar_class: null,
-                        bar_content_class: null,
-                        frequency_class: null,
-                        clear_filter_class: null
-                      } || null,
-                      review_actions: {
-                        actions_wrapper_class: null,
-                        write_review_button_class: null
                       } || null,
                       review_body: {
                         class: null,
@@ -200,7 +183,68 @@ async function mainScrapper(page, url) {
                   `,
       },
     ],
+    functions: [
+      {
+        name: "generateReviewResponseFormat",
+        parameters: {
+          type: "object",
+          properties: {
+            review_section: {
+              type: "object",
+              properties: {
+                main_review_section_container: {
+                  type: "object",
+                  properties: {
+                    id: { type: ["string", "null"] },
+                    class: { type: ["array", "null"], items: { type: "string" } },
+                    'data-attributes': { type: ["object", "null"] }
+                  }
+                },
+                review_body: {
+                  type: "object",
+                  properties: {
+                    class: { type: ["string", "null"] },
+                    reviews_class: { type: ["string", "null"] },
+                    review_item_class: { type: ["string", "null"] },
+                    review_content_class: { type: ["string", "null"] },
+                    review_title_class: { type: ["string", "null"] },
+                    review_body_text_class: { type: ["string", "null"] },
+                    review_timestamp_class: { type: ["string", "null"] },
+                    review_author_class: { type: ["string", "null"] },
+                    review_author_name_class: { type: ["string", "null"] },
+                    review_buyer_badge_class: { type: ["string", "null"] },
+                    review_social_class: { type: ["string", "null"] },
+                    review_votes_class: { type: ["string", "null"] },
+                    review_rating_class: { type: ["string", "null"] }
+                  }
+                },
+                pagination: {
+                  type: "object",
+                  properties: {
+                    pagination_class: { type: ["string", "null"] },
+                    page_class: { type: ["string", "null"] },
+                    current_page_class: { type: ["string", "null"] },
+                    next_page_class: { type: ["string", "null"] },
+                    last_page_class: { type: ["string", "null"] },
+                    spinner_wrapper_class: { type: ["string", "null"] },
+                    spinner_class: { type: ["string", "null"] }
+                  }
+                }
+              }
+            },
+            pagination_info: {
+              type: "object",
+              properties: {
+                exists: { type: "boolean" }
+              }
+            }
+          }
+        }
+      }
+    ],
+    function_call: { name: "generateReviewResponseFormat" }
   });
+
   let jsonResponse = response.choices[0].message.content;
   // Clean up the response content to try and ensure valid JSON
   jsonResponse = jsonResponse
@@ -401,7 +445,7 @@ async function main() {
   });
   const page = await browser.newPage();
   const url =
-    "https://www.alpsandmeters.com/collections/popular-right-now/products/24-ski-club-sweater";
+    "https://milky-mama.com/pages/customer-reviews";
 
   try {
     const reviews = await mainScrapper(page, url);
